@@ -1,0 +1,28 @@
+[package]
+name = "polars-kir-hmm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Polars expression plugin for KIR profile-HMM chain typing, gene assignment and domain segmentation"
+
+[lib]
+name = "_internal"
+crate-type = ["cdylib"]
+
+[dependencies]
+polars = { version = "0.54.4", default-features = false, features = ["dtype-struct"] }
+# default-features off: we use only `bitmap::Bitmap`, and the default feature set pulls the IPC
+# compression codecs (lz4, zstd) that nothing here reads or writes.
+polars-arrow = { version = "0.54.4", default-features = false }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
+pyo3-polars = { version = "0.27", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rayon = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

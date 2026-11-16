@@ -1,0 +1,10 @@
+target/
+vendor/
+__pycache__/
+*.so
+*.pyd
+.pytest_cache/
+tmp/
+.DS_Store
+dist/
+.venv/

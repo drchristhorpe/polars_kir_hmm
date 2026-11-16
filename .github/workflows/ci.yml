@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  # Full suite, including parity against the live reference. Needs 3.12 for numba.
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v5
+      - name: Build the extension
+        run: uv run maturin develop --release
+      - name: Fast suite
+        run: uv run pytest -m "not slow" -q
+      # The slow marks score all 1983 alleles against both implementations; ~10 min.
+      - name: Parity suite (full allele set)
+        run: uv run pytest -m slow -q
+
+  # The abi3 floor. histo_kir_hmm needs >= 3.12, so there is no reference here and the golden
+  # file is what the plugin is checked against -- which is exactly what golden.json is for.
+  abi3-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.10
+      - run: uv pip install polars pytest maturin
+      - run: uv run maturin develop --release
+      - name: Golden + polars + edge-case suites (parity auto-skips)
+        run: uv run pytest -q
+
+  # A hand-edited or corrupted model would otherwise only show up as a parity failure with a
+  # confusing message. Re-vendor from the reference and require the arrays to be unchanged.
+  models-are-vendored-faithfully:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Re-vendor from the installed histo_kir_hmm
+        run: uv run python codegen/vendor_models.py
+      - name: The vendored model arrays must be byte-identical to the reference's
+        run: |
+          git diff --stat -- python/polars_kir_hmm/models
+          git diff --quiet -- 'python/polars_kir_hmm/models/*.npz' \
+                              'python/polars_kir_hmm/models/background.npy' \
+            || (echo "vendored model arrays differ from the reference's" && exit 1)
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
